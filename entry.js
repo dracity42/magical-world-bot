@@ -1,26 +1,38 @@
 const fs = require("fs");
 const path = require("path");
 
-// Paths to main config file
-const configDirectory = "./configs/";
-const primaryConfigFileName = "config.js";
+// Loads the bot
+console.log("Loading client...");
+const Discord = require("discord.js");
+const client = new Discord.Client();
 
-// Loads the configs and modules into eventMap
-console.log("Parsing configs...");
+// loads modules into memory
+let modules = new Object();
+console.log("Loading modules into memory...");
+fs.readdirSync("./modules/").forEach(moduleFileName => {
+	let module = require(path.join(__dirname, "modules", moduleFileName));
 
-global.eventMap = new Array();
+	modules[moduleFileName] = module;
+});
 
-fs.readdir(configDirectory, (error, fileNames) => {
-	if(error) throw "There was an error reading the config folder";
-	if(!fileNames.includes(primaryConfigFileName)) throw "Could not find config.js";
+// Checks for unmet dependencies
+console.log("Checking for unmet dependencies...");
+let moduleKeys = Object.keys(modules);
+moduleKeys.forEach(moduleKey => {
+	let module = modules[moduleKey];
+	if(!module.moduleDependencies) return;
 
-	let config = require(path.join(configDirectory, primaryConfigFileName));
-	
-	config.moduleConfig.forEach(moduleConfig => {
-		if(!moduleConfig.enabled || !moduleConfig.enabled == true) return;
-
-		let module = require(path.join(configDirectory, moduleConfig.entry));
-
-		module.run(require(path.join(configDirectory, moduleConfig.config)));
+	module.moduleDependencies.forEach(dependency => {
+		if(!moduleKeys.includes(dependency)) throw `${moduleKey} is missing dependency ${dependency}`
 	});
 });
+
+// After unmet dependencies are checked, injects them into client
+console.log("Injecting modules into client...");
+moduleKeys.forEach(moduleKey => {
+	let runFunc = modules[moduleKey].run;
+
+	if(runFunc) runFunc(client, modules);
+});
+
+console.log("Finished loading modules into client");
